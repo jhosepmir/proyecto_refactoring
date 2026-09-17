@@ -1,0 +1,37 @@
+{
+    "app": {
+        "name": "Movie Explorer",
+        "version": "1.0.0",
+        "author": "Student",
+        "description": "Aplicaci\u00f3n de pel\u00edculas y series"
+    },
+    "api": {
+        "omdb_key": "trilogy",
+        "tvmaze_url": "http://api.tvmaze.com",
+        "timeout": 30,
+        "max_retries": 3
+    },
+    "ui": {
+        "theme": "dark",
+        "language": "es",
+        "items_per_page": 10,
+        "show_posters": true,
+        "animations": true
+    },
+    "cache": {
+        "enabled": true,
+        "expiry_hours": 24,
+        "max_size_mb": 100
+    },
+    "data": {
+        "auto_save": true,
+        "backup_enabled": true,
+        "max_backups": 10
+    },
+    "logging": {
+        "enabled": true,
+        "level": "DEBUG",
+        "file": "app.log",
+        "max_size_mb": 10
+    }
+}

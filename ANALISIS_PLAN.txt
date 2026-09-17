@@ -1,0 +1,246 @@
+ANALISIS DEL PLAN - proyecto_refactoring
+Fecha: 2026-09-17
+Directorios analizados: proyecto_refactoring/
+Archivos foco: api_movies.py, main.py (+ app.py, utils.py, *_manager.py, *_config.py)
+Modo: plan (solo lectura) - sin modificaciones de codigo
+================================================================
+
+1. VARIABLES GLOBALES EN api_movies.py Y main.py
+----------------------------------------------------------------
+api_movies.py:5-22 -> 11 variables globales:
+
+- API_KEY_OMDB = "trilogy" (str hardcoded) [L5]
+- API_KEY_TMDB = "" (str vacia/inutil) [L6]
+- BASE_URL_OMDB = "http://www.omdbapi.com/" [L7]
+- BASE_URL_TMDB = "https://api.themoviedb.org/3/" (no usada) [L8]
+- BASE_URL_TVMAZE = "http://api.tvmaze.com" [L9]
+- USUARIO_LOGUEADO = None (muerta: nunca leida/escrita) [L12]
+- PELICULAS_FAVORITAS = [] (list[dict] mutable) [L13]
+- HISTORIAL_BUSQUEDAS = [] (list[dict] mutable) [L14]
+- CACHE_PELICULAS = {} (dict mutable) [L15]
+- CACHE_SERIES = {} (dict mutable) [L16]
+- CONFIG = {"debug":True,"verbose":True,"timeout":30,"max_retries":3} [L17-22]
+
+Sentencias `global` en api_movies.py:
+- L38 `global CACHE_PELICULAS` en buscar_pelicula() - lee/escribe CACHE_PELICULAS[titulo]
+- L65 `global CACHE_SERIES` en buscar_series() - lee/escribe CACHE_SERIES[cache_key]
+- L112 `global PELICULAS_FAVORITAS` en agregar_a_favoritas() - append
+- L128 `global PELICULAS_FAVORITAS` en eliminar_de_favoritas() - pop(i)
+- L138 `global HISTORIAL_BUSQUEDAS` en agregar_al_historial() - append
+- L146 `global HISTORIAL_BUSQUEDAS` en limpiar_historial() - reasigna = []
+- L179 `global PELICULAS_FAVORITAS, HISTORIAL_BUSQUEDAS` en importar_de_json() - reasigna ambas
+
+Lecturas sin `global` (mutacion de objeto, no reasignacion):
+- CONFIG: hacer_request():24,26,29,31 ; buscar_pelicula():41
+- BASE_URL_* + API_KEY_OMDB: buscar_pelicula():45, buscar_peliculas_por_actor():56, buscar_series():71, obtener_detalles_serie():79
+- PELICULAS_FAVORITAS, HISTORIAL_BUSQUEDAS: obtener_estadisticas():152,156 ; exportar_a_json():167-168
+
+main.py -> 0 globales propias. Usa 3 heredadas via `from api_movies import *` (main.py:7):
+- PELICULAS_FAVORITAS: funcion_ver_favoritos():198,200,201,207,208
+- HISTORIAL_BUSQUEDAS: funcion_ver_historial():219,221,222
+- CONFIG: funcion_configuracion():260,261,262,266,269,272 (muta dict sin `global`)
+- No usa directamente: USUARIO_LOGUEADO, CACHE_*, API_KEY_*, BASE_URL_*
+
+
+2. RESUMEN BASICO DE LO QUE HACEN ESTOS ARCHIVOS
+----------------------------------------------------------------
+- api_movies.py:1-187 (capa de datos/API):
+  Busca peliculas por titulo/actor en OMDB (buscar_pelicula, buscar_peliculas_por_actor),
+  series en TVMaze (buscar_series, obtener_detalles_serie).
+  Devuelve listas hardcodeadas para populares/genero
+  (obtener_peliculas_populares, buscar_peliculas_por_genero).
+  Gestiona estado en memoria con globales (favoritas, historial, caches, CONFIG).
+  Persiste a JSON (exportar/importar_a_json).
+
+- main.py:1-334 (CLI/interfaz):
+  Menu de 12 opciones en loop (menu_principal) + funciones funcion_* por opcion.
+  Muestra datos por consola (mostrar_pelicula/serie/lista, print_header/separator, clear_screen).
+  Delega toda la logica a api_movies via `from api_movies import *`.
+
+
+3. MAPEO DE DEPENDENCIAS ENTRE MODULOS
+----------------------------------------------------------------
+Grafo real - solo 1 arista interna:
+
+  main.py -> api_movies.py (via `from api_movies import *`, main.py:7)
+           -> sys, os, time, random (stdlib)
+  api_movies.py -> requests, json (solo externas; requirements.txt: requests>=2.28.0)
+  app.py -> requests, json, sys, os, time, random (a nada local; monolito alternativo desconectado, app.py:1-6)
+  utils.py -> os, sys, time, random, datetime (+ json/csv diferidos, a nada local, utils.py:1-5)
+  25x *_manager.py -> solo stdlib (os/json/time/csv/datetime)
+  88x *config.py -> solo stdlib (os/json/time/datetime)
+
+Hallazgos:
+1. `main.py:7` importa todo el namespace (11 globales + funciones), sin `__all__`.
+   Riesgo de colision: clear_screen/print_header/delay definidos en main.py, app.py y utils.py.
+2. Cero dependencias circulares.
+3. 116/118 modulos huerfanos (nadie los importa): app.py, utils.py, logger.py,
+   25 managers, 88 configs. main.py es entry-point (normal).
+4. Duplicacion: app.py ~= main.py+api_movies.py; cache_manager vs cache_manager_v2;
+   config_manager vs config_manager_v2; utils.py duplica utilidades sin usarse.
+5. 88 *config.py con cabecera identica y cero interdependencia - candidatos a colapsar.
+
+
+4. ARBOL DE DEPENDENCIAS
+----------------------------------------------------------------
+proyecto_refactoring/
+|-- main.py [ENTRY-POINT]
+|   |-- api_movies.py (from api_movies import * - unica arista interna)
+|   |   |-- requests (externa)
+|   |   `-- json (stdlib)
+|   |-- sys, os, time, random (stdlib)
+|   `-- usa globales heredadas: PELICULAS_FAVORITAS, HISTORIAL_BUSQUEDAS, CONFIG
+|-- app.py [HUERFANO - monolito alternativo, nadie lo importa]
+|   |-- requests, json
+|   `-- sys, os, time, random
+|-- utils.py [HUERFANO - utilidades duplicadas, nadie lo importa]
+|   |-- os, sys, time, random, datetime
+|   `-- json, csv (imports diferidos l.185/194)
+|-- logger.py [HUERFANO]
+|   `-- json, os, time, datetime
+|-- *_manager.py (25x) [TODOS HUERFANOS, solo stdlib]
+|   |-- cache_manager.py -> json, os, time
+|   |-- cache_manager_v2.py -> (duplicado, sin uso)
+|   |-- config_manager.py / config_manager_v2.py -> (duplicados)
+|   |-- data_manager.py -> json, os, csv, datetime
+|   |-- export_manager.py -> os, json, csv, datetime (+shutil diferido)
+|   `-- otros 20 managers -> os, json, time, datetime
+|-- *config.py (88x) [TODOS HUERFANOS, cero interdependencia]
+|   `-- os, json, time, datetime (cabecera identica)
+`-- requirements.txt
+    |-- requests>=2.28.0
+    `-- json5>=0.9.0
+
+Sin ciclos. 116/118 huerfanos; main.py es entry-point normal.
+
+
+5. DUPLICACION DE CODIGO
+----------------------------------------------------------------
+5.1 Triplicado main.py <-> app.py <-> utils.py:
+- clear_screen() - main.py:9-11, app.py:26-27, utils.py:18-20
+  os.system('cls' if os.name=='nt' else 'clear') identico.
+- print_header / print_separator / delay - main.py:13-25, app.py:18-30, utils.py:22-40.
+- mostrar_pelicula / mostrar_serie / mostrar_lista - main.py:27-108, app.py:89-117,
+  utils.py:56-170 (format_*_display).
+- menu_principal + __main__ - main.py:276-333 vs app.py:120-255
+  (mismo while True + if/elif funcion_* + try KeyboardInterrupt).
+- app.py:1-255 es monolito duplicado de main.py:1-334 + api_movies.py:1-187
+  (mismos populares hardcodeados Shawshank/Godfather/..., misma busqueda OMDB/TVMaze).
+
+5.2 Dentro de api_movies.py:
+- buscar_pelicula:36-52 ~= buscar_peliculas_por_actor:54-61
+  (arma URL + hacer_request + if Response=="True").
+- CACHE_PELICULAS:40-43 ~= CACHE_SERIES:63-69.
+- agregar_a_favoritas:110-124 ~= eliminar_de_favoritas:126-134
+  (loop manual Title==Title vs any()/dict).
+- obtener_estadisticas:149-162: 2 contadores manuales `for + total+1` en vez de len().
+- buscar_por_genero:92-108: listas accion=[Die Hard,Mad Max] + comedia=[Superbad,Hangover] hardcodeadas.
+
+5.3 Managers versionados:
+- cache_manager.py:10-140 vs cache_manager_v2.py:13-158: 12 firmas identicas
+  (init_cache, get_cache_key, save/get, clear, remove, stats, cleanup, exists, size, export/import).
+  Difieren solo expiracion (3600s + time.time() vs 24h + index.json + datetime).
+- config_manager.py:22-69 vs config_manager_v2.py:48-141: 9 clonadas
+  (load/save/get/set/reset/export/import/validate/print_config),
+  firma rota get_config(key) vs get_config(section,key).
+
+5.4 88x *config.py - clon masivo:
+Patron verificado en api_config.py:1-30, cache_manager.py:1-20, cache_manager_v2.py:1-20:
+`import os,json,time,datetime + X_CONFIG_FILE + x_config={} + load/save/get/set/reset/enable/disable/export/import/validate/backup/restore/summary`.
+Solo cambia prefijo.
+
+5.5 Micro-duplicacion:
+- `while i<len + i+=1`: main.py:101,160,200,221 ; app.py:115,178,201,228,239 -> enumerate().
+- `try: print(pelicula["X"]) except: N/A` x9 en main.py:35-78, x11 en utils.py:66-119.
+
+
+6. BARE EXCEPT Y MANEJO DE ERRORES DEFICIENTE
+----------------------------------------------------------------
+6.1 `except:` desnudo - 27x:
+main.py:37,42,47,52,57,62,67,72,77
+  try: print("Titulo/Ano/Rating/..." + pelicula["Title"/"Year"/...])
+  except: print("... N/A")  # tapa KeyError/TypeError; deberia .get() o except KeyError
+main.py:253 funcion_importar()
+  try: importar_de_json(...)
+  except: print("Error al importar archivo")  # sin tipo, sin e
+
+utils.py:68,73,78,83,88,93,98,103,108,113,118 (format_movie_display, mismo patron x11)
+utils.py:239 validate_date(): try: strptime... except: return False
+utils.py:266 sort_items(): try: sorted(...) except: return items
+
+favorites_manager.py:77 sort_favorites(): except: return favorites.copy()
+favorites_manager.py:141 get_stats(): try: float(rating)... except: pass
+
+log_manager.py:170 parse_log_line(): except: pass (silencio total, retorna None implicito)
+log_manager.py:190 validate_log_format(): except: pass
+
+api_movies.py, app.py: 0x `except:` - peor: sin `try` directamente.
+
+6.2 `except Exception` generico:
+- main.py:332-334 y app.py:253-255 identicos:
+  `except Exception as e: print("Error inesperado: "+str(e)); sys.exit(1)`
+  sin logging/traceback, sin distinguir RequestException/ValueError/IOError.
+
+6.3 Sin manejo:
+- requests.get sin try: api_movies.py:29 hacer_request() (tiene timeout pero sin
+  try/raise_for_status; response.json():34 sin try), app.py:40,57,65,70 (ni try ni timeout).
+- open/json.load/dump sin try: api_movies.py:172-173,181-182 ; utils.py:175,188-189,197 ;
+  favorites_manager.py:15-16,22-23,92-93,100-101 ; log_manager.py:25,59,68,117
+  (patron en todos los managers).
+- int(input()) sin ValueError: main.py:272 CONFIG["timeout"]=int(input(...)) (crashea con texto).
+  Unico correcto de referencia: utils.py:53-54 except ValueError.
+- pelicula["X"] directo en vez de .get(): main.py:36,41,46,51,56,61,66,71,76,103-104,144,222
+  (causa el KeyError que luego tapa el bare except).
+
+
+7. ARCHIVOS *_config.py QUE NO SE USAN
+----------------------------------------------------------------
+Veredicto: 0 usados de ~83. Evidencia:
+- grep from.*config import|import.*config en main.py -> sin hits (solo from api_movies import *, main.py:7).
+- main.py, api_movies.py, app.py, utils.py, *_manager.py solo importan
+  sys/os/time/json/requests/datetime - ninguno importa un *_config.
+- Busqueda por nombre (api_config, cache_config, etc.) solo aparece en su propio archivo.
+
+Patron comun (verificado cache_config.py:1-30, ui_config.py:1-30, api_config.py:1-30):
+import os,json,time,datetime + X_CONFIG_FILE="x.json" + x_config={} +
+load/save/get/set/reset/enable/disable/export/import/validate/backup/restore/summary.
+Solo cambian defaults y prefijo.
+
+Inventario por grupo (todos huerfanos):
+1. Generales (21): accessibility, backup, cache, cache_expiry, database, debug, display,
+   email, language, log, maintenance, network, notification, performance, privacy,
+   proxy, search, security, storage, theme, ui_config.py
+   Ej. ui_config: theme=dark, language=es, items_per_page=10;
+       cache_config: enabled=True, expiry_hours=24, max_size_mb=100.
+2. api_* (19): api_config (omdb/tvmaze url/key/timeout), api_auth, api_bulkhead,
+   api_caching_strategy, api_circuit_breaker, api_debug, api_degradation,
+   api_error_handling, api_failover, api_logging, api_monitoring, api_performance,
+   api_rate_limit, api_rate_limiter, api_retry, api_security, api_testing,
+   api_timeout, api_timeout_retry_config.py.
+3. api_cache_* (~48): alerting, analytics, architecture, best_practices, cleanup,
+   collaboration, compliance, compression, config, debug, deprecation,
+   deprecation_schedule, disaster_recovery, distribution, documentation, evolution,
+   failover, future, governance, innovation, integration, intelligence, invalidation,
+   legacy, lifecycle, load_testing, mentoring, metrics, migration, migration_schedule,
+   monitoring, observability, performance, performance_testing, preloading,
+   recommendations, recovery, reporting, resilience_testing, scalability, security,
+   security_testing, serialization, stress_testing, testing, training, validation, warming.
+
+Accion propuesta: eliminar o colapsar en config_manager; documentar en docs/config_no_usados.md
+con tabla archivo | variable FILE | dict | defaults | funciones | estado: NO USADO.
+
+
+8. PLAN PROPUESTO (pendiente de aprobacion, no ejecutado)
+----------------------------------------------------------------
+1. Sustituir `from api_movies import *` por imports explicitos (+ `__all__`).
+2. Encapsular globales: Config dataclass/env-vars; clase MovieStore para
+   favoritas/historial/caches; eliminar `global`.
+3. Decidir entry-point unico (main.py vs app.py); conectar o eliminar managers/configs huerfanos.
+4. Extraer ui/utils comun (clear_screen, print_header, delay, mostrar_*).
+5. Unificar cache/config_manager en una version; colapsar 88 configs.
+6. Errores: except: -> except (KeyError, TypeError) o .get("X","N/A");
+   try RequestException/Timeout/JSONDecodeError en hacer_request;
+   try FileNotFound/JSONDecode/OSError en import/export; try ValueError en int(input).
+7. Duplicacion: len()/any()/enumerate(); listas hardcodeadas -> API real o datos.
+================================================================
+FIN DEL ANALISIS
