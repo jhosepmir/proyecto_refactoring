@@ -17,9 +17,8 @@ APP_VERSION = "1.0.0"
 # ---------------------------------------------------------------------------
 # API / red
 # ---------------------------------------------------------------------------
-API_KEY_OMDB = "trilogy"  # clave demo de OMDb
-API_KEY_TMDB = ""  # vacia: TMDB no se usa realmente
-
+# Las claves de API se leen de variables de entorno (config.CONFIG
+# "api_key_omdb"); no hay claves hardcodeadas en este modulo.
 BASE_URL_OMDB = "http://www.omdbapi.com/"
 BASE_URL_TMDB = "https://api.themoviedb.org/3/"
 BASE_URL_TVMAZE = "http://api.tvmaze.com"
@@ -38,6 +37,7 @@ PARAM_TYPE_MOVIE = "movie"
 OMDB_RESPONSE_KEY = "Response"
 OMDB_SUCCESS = "True"
 OMDB_SEARCH_KEY = "Search"
+OMDB_ERROR_KEY = "Error"
 TVMAZE_SHOW_KEY = "show"
 
 # ---------------------------------------------------------------------------

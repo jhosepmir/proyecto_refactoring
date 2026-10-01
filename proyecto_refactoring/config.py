@@ -476,7 +476,7 @@ REGISTRY = {
     },
     'api_config': {
         "filename": 'api_config.json',
-        "defaults": {'omdb': {'url': 'http://www.omdbapi.com/', 'key': 'trilogy', 'timeout': 30},
+        "defaults": {'omdb': {'url': 'http://www.omdbapi.com/', 'key': '', 'timeout': 30},
  'tvmaze': {'url': 'http://api.tvmaze.com', 'timeout': 30}},
     },
     'api_debug_config': {
@@ -738,3 +738,20 @@ def restore(name, backup_name):
 def summary(name):
     """Resumen (copia) de una seccion."""
     return manager.summary(name)
+
+
+# Configuracion de ejecucion (mutable en runtime desde el menu opcion 11).
+# Compartida por la capa api (cliente HTTP) y la capa ui (menu) sin violar la
+# direccion de dependencias.
+#
+# Las claves de API se leen de variables de entorno (SEGURIDAD). El fallback
+# "trilogy" es la clave publica DEMO de OMDb (no sensible) para que el proyecto
+# funcione sin red; cualquier despliegue real debe setear OMDB_API_KEY.
+CONFIG = {
+    "debug": get("debug_config", "enabled"),
+    "verbose": get("debug_config", "verbose"),
+    "timeout": get("network_config", "timeout"),
+    "max_retries": get("network_config", "max_retries"),
+    "api_key_omdb": os.getenv("OMDB_API_KEY", "trilogy"),
+    "api_key_tmdb": os.getenv("TMDB_API_KEY", ""),
+}

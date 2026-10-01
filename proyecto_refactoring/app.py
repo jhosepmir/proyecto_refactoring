@@ -6,9 +6,10 @@ import time
 import random
 
 import constants
+import config
 
 # Variables globales
-API_KEY = constants.API_KEY_OMDB
+API_KEY = config.CONFIG["api_key_omdb"]
 OMDB_BASE_URL = constants.BASE_URL_OMDB
 TVMAZE_BASE_URL = constants.BASE_URL_TVMAZE
 CACHE = {}

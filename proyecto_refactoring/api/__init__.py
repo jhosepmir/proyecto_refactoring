@@ -1,0 +1,1 @@
+"""api - Capa de acceso a servicios externos (OMDb, TVMaze)."""
